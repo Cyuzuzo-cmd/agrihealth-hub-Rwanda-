@@ -1,0 +1,67 @@
+from pathlib import Path
+import re, zipfile
+
+base = Path("/mnt/data")
+html_path = base / "agri_health_hub_rwanda_v3.html"
+zip_path = base / "agri_health_hub_rwanda_v3_publish.zip"
+
+if not html_path.exists():
+    raise FileNotFoundError("The website HTML file is not available in the current workspace.")
+
+html = html_path.read_text(encoding="utf-8")
+
+# Correct the WhatsApp destination number (international format, digits only).
+html = re.sub(
+    r'const\s+WHATSAPP_NUMBER\s*=\s*"[^"]*";',
+    'const WHATSAPP_NUMBER = "250799305141";',
+    html
+)
+
+# Add a clean, dedicated contact block near the existing contact section.
+contact_block = """
+<section id="contact-details" class="contact-details" aria-label="Contact Agri-Health Hub Rwanda">
+  <h3>Contact Agri-Health Hub Rwanda</h3>
+  <p><strong>Phone 1:</strong> <a href="tel:0799305141">0799305141</a></p>
+  <p><strong>Phone 2:</strong> <a href="tel:+250725781596">+250 725 781 596</a></p>
+  <p><strong>Email:</strong> <a href="mailto:cyuzuzombonikeshad@gmail.com">cyuzuzombonikeshad@gmail.com</a></p>
+</section>
+"""
+
+# Replace any previous injected contact-details block so repeated edits don't duplicate it.
+html = re.sub(
+    r'<section id="contact-details".*?</section>',
+    '',
+    html,
+    flags=re.DOTALL
+)
+
+# Insert before the footer when possible; otherwise before body close.
+footer_match = re.search(r'<footer\b', html, flags=re.IGNORECASE)
+if footer_match:
+    html = html[:footer_match.start()] + contact_block + "\n" + html[footer_match.start():]
+else:
+    body_close = re.search(r'</body\s*>', html, flags=re.IGNORECASE)
+    if not body_close:
+        raise ValueError("Could not find a suitable place to add the contact details.")
+    html = html[:body_close.start()] + contact_block + "\n" + html[body_close.start():]
+
+html_path.write_text(html, encoding="utf-8")
+
+# Refresh the ZIP package for Netlify/GitHub deployment; index.html is the entry point.
+with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+    zf.write(html_path, arcname="index.html")
+
+# Verify required contacts and links are in the saved files.
+saved = html_path.read_text(encoding="utf-8")
+assert 'href="tel:0799305141">0799305141</a>' in saved
+assert 'href="tel:+250725781596">+250 725 781 596</a>' in saved
+assert 'href="mailto:cyuzuzombonikeshad@gmail.com">cyuzuzombonikeshad@gmail.com</a>' in saved
+assert 'const WHATSAPP_NUMBER = "250799305141";' in saved
+
+print("Updated and verified contact section:")
+print("Phone 1: 0799305141")
+print("Phone 2: +250 725 781 596")
+print("Email: cyuzuzombonikeshad@gmail.com")
+print("WhatsApp order number: 250799305141")
+print(f"HTML file: {html_path} ({html_path.stat().st_size} bytes)")
+print(f"Netlify ZIP: {zip_path} ({zip_path.stat().st_size} bytes)")
